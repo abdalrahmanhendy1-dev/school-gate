@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>أذونات الخروج</title>
+<style>
+body{margin:0;font-family:Tahoma,Arial,sans-serif;background:#f4f6f8;color:#1d2733}
+.wrap{max-width:440px;margin:0 auto;padding:20px 16px}
+h1{text-align:center;font-size:26px;margin:8px 0 18px}
+.card{background:#fff;border:1px solid #dde3e8;border-radius:14px;padding:18px}
+label{display:block;font-weight:bold;margin:0 0 6px}
+input,select{width:100%;box-sizing:border-box;font:inherit;font-size:18px;padding:12px;border:1px solid #cfd6dd;border-radius:10px;margin-bottom:14px;background:#fff}
+button{width:100%;font:inherit;font-size:22px;font-weight:bold;color:#fff;border:0;border-radius:12px;padding:16px;cursor:pointer}
+.out{background:#dd6b10}.in{background:#12a37a}button:disabled{opacity:.6}
+.msg{text-align:center;margin:0 0 14px;font-size:17px}
+.done{border-radius:14px;padding:24px;text-align:center;color:#fff;font-size:20px}
+.done b{display:block;font-size:26px;margin-bottom:8px}
+.err{background:#fde2e2;color:#b91c1c;border-radius:10px;padding:10px;margin-top:12px;text-align:center}
+.hint{color:#66727f;font-size:13px;text-align:center;margin-top:12px}
+.hide{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>أذونات الخروج</h1>
+  <div id="form" class="card">
+    <label for="q">اسمك</label>
+    <input id="q" placeholder="اكتب أول اسمك" autocomplete="off">
+    <select id="who"><option value="">لحظة...</option></select>
+    <div id="state" class="hide">
+      <p id="status" class="msg"></p>
+      <div id="reasonBox">
+        <label for="reason">سبب الخروج (اختياري)</label>
+        <select id="reason">
+          <option value="">بدون</option>
+          <option>مأمورية عمل</option><option>ظرف شخصي</option><option>طبي</option>
+          <option>إداري / مديرية</option><option>أخرى</option>
+        </select>
+      </div>
+      <button id="go"></button>
+    </div>
+    <div id="err" class="err hide"></div>
+    <p class="hint">الوقت بيتسجل تلقائيًا ساعة ما تضغط.</p>
+  </div>
+  <div id="done" class="done hide"></div>
+</div>
+<script>
+// The sheet's Google Script, called in the background without the phone's Google accounts, so it opens on any phone.
+var API = "https://script.google.com/macros/s/AKfycbxxHUiIcf0FtgqjOERmLXRItm1LxCxbAYd7yZSfZly6q2BsL5oSY4j-qaQtYvsyls_2/exec";
+var names = [], picked = "";
+function $(i) { return document.getElementById(i); }
+function call(params) {
+  var qs = Object.keys(params).map(function (k) { return k + "=" + encodeURIComponent(params[k]); }).join("&");
+  return fetch(API + "?" + qs, { credentials: "omit", cache: "no-store", redirect: "follow" })
+    .then(function (r) { return r.json(); })
+    .then(function (d) { if (d.error) throw new Error(d.error); return d; });
+}
+function err(e) {
+  var m = e && e.message && !/fetch|network|JSON/i.test(e.message) ? e.message : "مفيش نت أو حصلت مشكلة، جرب تاني.";
+  $("err").textContent = m; $("err").classList.remove("hide"); $("go").disabled = false;
+}
+function fill() {
+  var q = $("q").value.trim();
+  var list = names.filter(function (n) { return !q || n.indexOf(q) >= 0; });
+  var sel = $("who"); sel.innerHTML = "";
+  var first = document.createElement("option"); first.value = ""; first.textContent = "اختار اسمك"; sel.appendChild(first);
+  list.forEach(function (n) { var o = document.createElement("option"); o.textContent = n; o.selected = n === picked; sel.appendChild(o); });
+}
+function pick(n) {
+  picked = n; $("err").classList.add("hide"); $("state").classList.add("hide");
+  if (!n) return;
+  try { localStorage.setItem("gateName", n); } catch (e) {}
+  $("status").textContent = "لحظة..."; $("state").classList.remove("hide");
+  $("go").classList.add("hide"); $("reasonBox").classList.add("hide");
+  call({ api: "status", name: n }).then(function (s) {
+    if (picked !== n) return;
+    $("go").classList.remove("hide");
+    if (s.out) {
+      $("status").textContent = "انت خارج من الساعة " + s.outAt + " (بقالك " + s.minutes + " دقيقة)";
+      $("go").textContent = "رجعت"; $("go").className = "in";
+    } else {
+      $("status").textContent = ""; $("reasonBox").classList.remove("hide");
+      $("go").textContent = "خارج الآن"; $("go").className = "out";
+    }
+  }).catch(err);
+}
+$("q").oninput = fill;
+$("who").onchange = function () { pick($("who").value); };
+$("go").onclick = function () {
+  $("go").disabled = true; $("err").classList.add("hide");
+  call({ api: "record", name: picked, reason: $("reason").value }).then(function (r) {
+    $("form").classList.add("hide");
+    var d = $("done"); d.classList.remove("hide");
+    d.style.background = r.action === "OUT" ? "#dd6b10" : "#12a37a";
+    d.innerHTML = "<b></b><span></span>";
+    d.querySelector("b").textContent = r.name;
+    d.querySelector("span").textContent = r.action === "OUT" ? "خروج الساعة " + r.time : "رجوع الساعة " + r.time + " · كنت بره " + r.minutes + " دقيقة";
+  }).catch(err);
+};
+call({ api: "names" }).then(function (d) {
+  names = d.names; var last = "";
+  try { last = localStorage.getItem("gateName") || ""; } catch (e) {}
+  if (names.indexOf(last) >= 0) picked = last;
+  fill(); if (picked) pick(picked);
+}).catch(err);
+</script>
+</body>
+</html>
