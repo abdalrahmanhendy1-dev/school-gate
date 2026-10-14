@@ -59,7 +59,9 @@ function call(params) {
 }
 function err(e) {
   var m = e && e.message && !/fetch|network|JSON/i.test(e.message) ? e.message : "مفيش نت أو حصلت مشكلة، جرب تاني.";
-  $("err").textContent = m; $("err").classList.remove("hide"); $("go").disabled = false;
+  $("err").textContent = m; $("err").classList.remove("hide");
+  var go = $("go");
+  if (go) { go.disabled = false; if (go.dataset.label) go.textContent = go.dataset.label; }
 }
 function fill() {
   var q = $("q").value.trim();
@@ -88,9 +90,25 @@ function pick(n) {
 }
 $("q").oninput = fill;
 $("who").onchange = function () { pick($("who").value); };
+// Where the phone is right now: out and back only count from inside the school.
+function here() {
+  return new Promise(function (ok, no) {
+    if (!navigator.geolocation) return no(new Error("الموبايل ده مش بيدعم تحديد المكان."));
+    navigator.geolocation.getCurrentPosition(function (p) {
+      ok({ lat: p.coords.latitude, lng: p.coords.longitude, acc: Math.round(p.coords.accuracy) });
+    }, function (e) {
+      no(new Error(e.code === 1
+        ? "لازم تسمح بالموقع (Location) علشان تسجّل. افتح إعدادات المتصفح واسمح للصفحة دي بالموقع، وجرب تاني."
+        : "مش قادرين نحدد مكانك. شغّل الموقع (Location) في الموبايل وجرب تاني."));
+    }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 });
+  });
+}
 $("go").onclick = function () {
   $("go").disabled = true; $("err").classList.add("hide");
-  call({ api: "record", name: picked, reason: $("reason").value }).then(function (r) {
+  $("go").dataset.label = $("go").textContent; $("go").textContent = "بنتأكد إنك في المدرسة...";
+  here().then(function (w) {
+    return call({ api: "record", name: picked, reason: $("reason").value, lat: w.lat, lng: w.lng, acc: w.acc });
+  }).then(function (r) {
     $("form").classList.add("hide");
     var d = $("done"); d.classList.remove("hide");
     d.style.background = r.action === "OUT" ? "#dd6b10" : "#12a37a";
@@ -99,7 +117,18 @@ $("go").onclick = function () {
     d.querySelector("span").textContent = r.action === "OUT" ? "خروج الساعة " + r.time : "رجوع الساعة " + r.time + " · كنت بره " + (r.duration || r.minutes + " دقيقة");
   }).catch(err);
 };
-call({ api: "names" }).then(function (d) {
+var setup = new URLSearchParams(location.search).get("setup");
+if (setup) {  // the manager, standing at the gate, saves this spot as the school (once)
+  $("form").innerHTML = '<p class="msg">اقف على البوابة ودوس الزرار ده مرة واحدة علشان نحفظ مكان المدرسة.</p><button id="save" class="in">حفظ مكان المدرسة</button><div id="err" class="err hide"></div>';
+  $("save").onclick = function () {
+    $("save").disabled = true; $("err").classList.add("hide");
+    here().then(function (w) { return call({ api: "place", key: setup, lat: w.lat, lng: w.lng, acc: w.acc }); })
+      .then(function (r) {
+        $("form").classList.add("hide"); var d = $("done"); d.classList.remove("hide"); d.style.background = "#12a37a";
+        d.textContent = "اتحفظ مكان المدرسة ✅ (دقة الموقع حوالي " + r.acc + " متر)";
+      }).catch(function (e) { err(e); $("save").disabled = false; });
+  };
+} else call({ api: "names" }).then(function (d) {
   names = d.names; var last = "";
   try { last = localStorage.getItem("gateName") || ""; } catch (e) {}
   if (names.indexOf(last) >= 0) picked = last;
