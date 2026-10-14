@@ -78,7 +78,7 @@ function pick(n) {
     if (picked !== n) return;
     $("go").classList.remove("hide");
     if (s.out) {
-      $("status").textContent = "انت خارج من الساعة " + s.outAt + " (بقالك " + s.minutes + " دقيقة)";
+      $("status").textContent = "انت خارج من الساعة " + s.outAt + " (بقالك " + (s.duration || s.minutes + " دقيقة") + ")";
       $("go").textContent = "رجعت"; $("go").className = "in";
     } else {
       $("status").textContent = ""; $("reasonBox").classList.remove("hide");
@@ -96,7 +96,7 @@ $("go").onclick = function () {
     d.style.background = r.action === "OUT" ? "#dd6b10" : "#12a37a";
     d.innerHTML = "<b></b><span></span>";
     d.querySelector("b").textContent = r.name;
-    d.querySelector("span").textContent = r.action === "OUT" ? "خروج الساعة " + r.time : "رجوع الساعة " + r.time + " · كنت بره " + r.minutes + " دقيقة";
+    d.querySelector("span").textContent = r.action === "OUT" ? "خروج الساعة " + r.time : "رجوع الساعة " + r.time + " · كنت بره " + (r.duration || r.minutes + " دقيقة");
   }).catch(err);
 };
 call({ api: "names" }).then(function (d) {
